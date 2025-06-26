@@ -36,7 +36,7 @@ const RegisterPage: React.FC = () => {
     clearErrors,
     formState: { errors },
   } = useForm<RegisterForm>({
-    mode: "onTouched", // Changed from "onChange" to "onTouched"
+    mode: "onBlur", // Changed from "onTouched" to "onBlur" for better mobile experience
   })
 
   const password = watch("password")
@@ -49,19 +49,24 @@ const RegisterPage: React.FC = () => {
       fieldsToValidate = ["name", "email"]
     }
 
-    // Get current form values to check if fields have content
+    // Get current form values
     const values = getValues()
 
-    // Check if required fields are filled
+    // For step 1, check if name and email have content
     if (currentStep === 1) {
-      if (!values.name?.trim() || !values.email?.trim()) {
+      const hasName = values.name && values.name.trim().length > 0
+      const hasEmail = values.email && values.email.trim().length > 0
+
+      if (!hasName || !hasEmail) {
         // Trigger validation to show error messages
         await trigger(fieldsToValidate)
         return
       }
     }
 
+    // Validate the fields
     const isValid = await trigger(fieldsToValidate)
+
     if (isValid && currentStep < totalSteps) {
       // Clear any existing errors when moving to next step
       clearErrors()
