@@ -32,11 +32,15 @@ const RegisterPage: React.FC = () => {
     handleSubmit,
     watch,
     trigger,
+    getValues,
+    clearErrors,
     formState: { errors },
-  } = useForm<RegisterForm>()
+  } = useForm<RegisterForm>({
+    mode: "onTouched", // Changed from "onChange" to "onTouched"
+  })
 
   const password = watch("password")
-  const totalSteps = 2
+  const totalSteps = 2 // Changed from 3 to 2
 
   const nextStep = async () => {
     let fieldsToValidate: (keyof RegisterForm)[] = []
@@ -45,14 +49,30 @@ const RegisterPage: React.FC = () => {
       fieldsToValidate = ["name", "email"]
     }
 
+    // Get current form values to check if fields have content
+    const values = getValues()
+
+    // Check if required fields are filled
+    if (currentStep === 1) {
+      if (!values.name?.trim() || !values.email?.trim()) {
+        // Trigger validation to show error messages
+        await trigger(fieldsToValidate)
+        return
+      }
+    }
+
     const isValid = await trigger(fieldsToValidate)
     if (isValid && currentStep < totalSteps) {
+      // Clear any existing errors when moving to next step
+      clearErrors()
       setCurrentStep(currentStep + 1)
     }
   }
 
   const prevStep = () => {
     if (currentStep > 1) {
+      // Clear errors when going back
+      clearErrors()
       setCurrentStep(currentStep - 1)
     }
   }
@@ -72,61 +92,71 @@ const RegisterPage: React.FC = () => {
   }
 
   const getPasswordStrength = (password: string) => {
-    if (!password) return { strength: 0, label: "", color: "", requirements: [] }
+    if (!password)
+      return {
+        strength: 0,
+        label: "",
+        color: "",
+        percentage: 0,
+        requirements: {
+          length: false,
+          lowercase: false,
+          uppercase: false,
+          number: false,
+          special: false,
+          noRepeats: false,
+        },
+      }
 
     let strength = 0
-    const requirements = []
-
-    // Length requirements
-    if (password.length >= 8) {
-      strength += 1
-      requirements.push("✓ At least 8 characters")
-    } else {
-      requirements.push("✗ At least 8 characters")
+    const requirements = {
+      length: password.length >= 8,
+      lowercase: /[a-z]/.test(password),
+      uppercase: /[A-Z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[^A-Za-z0-9]/.test(password),
+      noRepeats: !/(.)\1{2,}/.test(password), // No character repeated 3+ times
     }
 
-    // Uppercase letter
-    if (/[A-Z]/.test(password)) {
-      strength += 1
-      requirements.push("✓ One uppercase letter")
-    } else {
-      requirements.push("✗ One uppercase letter")
-    }
+    // Basic requirements (1 point each)
+    if (requirements.length) strength += 1
+    if (requirements.lowercase) strength += 1
+    if (requirements.uppercase) strength += 1
+    if (requirements.number) strength += 1
+    if (requirements.special) strength += 1
+    if (requirements.noRepeats) strength += 1
 
-    // Lowercase letter
-    if (/[a-z]/.test(password)) {
-      strength += 1
-      requirements.push("✓ One lowercase letter")
-    } else {
-      requirements.push("✗ One lowercase letter")
-    }
+    // Bonus points for longer passwords
+    if (password.length >= 12) strength += 1
+    if (password.length >= 16) strength += 1
 
-    // Number
-    if (/[0-9]/.test(password)) {
-      strength += 1
-      requirements.push("✓ One number")
-    } else {
-      requirements.push("✗ One number")
-    }
+    // Penalty for common patterns
+    const commonPatterns = [/123456/, /password/i, /qwerty/i, /abc123/i, /admin/i, /login/i]
 
-    // Special character
-    if (/[^A-Za-z0-9]/.test(password)) {
-      strength += 1
-      requirements.push("✓ One special character")
-    } else {
-      requirements.push("✗ One special character")
-    }
+    const hasCommonPattern = commonPatterns.some((pattern) => pattern.test(password))
+    if (hasCommonPattern) strength = Math.max(0, strength - 2)
+
+    // Cap at maximum strength
+    strength = Math.min(strength, 8)
 
     const configs = [
-      { label: "", color: "" },
-      { label: "Very Weak", color: "bg-red-500" },
-      { label: "Weak", color: "bg-red-400" },
-      { label: "Fair", color: "bg-yellow-500" },
-      { label: "Good", color: "bg-green-400" },
-      { label: "Strong", color: "bg-green-500" },
+      { label: "", color: "bg-gray-300", textColor: "text-gray-500", percentage: 0 },
+      { label: "Very Weak", color: "bg-red-500", textColor: "text-red-600", percentage: 12.5 },
+      { label: "Weak", color: "bg-red-400", textColor: "text-red-500", percentage: 25 },
+      { label: "Fair", color: "bg-orange-500", textColor: "text-orange-600", percentage: 37.5 },
+      { label: "Good", color: "bg-yellow-500", textColor: "text-yellow-600", percentage: 50 },
+      { label: "Strong", color: "bg-lime-500", textColor: "text-lime-600", percentage: 62.5 },
+      { label: "Very Strong", color: "bg-green-500", textColor: "text-green-600", percentage: 75 },
+      { label: "Excellent", color: "bg-green-600", textColor: "text-green-700", percentage: 87.5 },
+      { label: "Maximum", color: "bg-emerald-600", textColor: "text-emerald-700", percentage: 100 },
     ]
 
-    return { strength, ...configs[strength], requirements }
+    return {
+      strength,
+      requirements,
+      percentage: configs[strength].percentage,
+      ...configs[strength],
+    }
   }
 
   const passwordStrength = getPasswordStrength(password || "")
@@ -152,8 +182,8 @@ const RegisterPage: React.FC = () => {
     },
     {
       icon: Shield,
-      title: "Unlimited  Room ",
-      description: " Create generic rooms",
+      title: "Enterprise Security",
+      description: "Bank-level protection",
       color: "from-[#805117] to-[#a66b1f]",
     },
   ]
@@ -287,7 +317,7 @@ const RegisterPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Step 2: Password */}
+                  {/* Step 2: Password & Team Info */}
                   {currentStep === 2 && (
                     <div className="space-y-4">
                       <div>
@@ -300,18 +330,8 @@ const RegisterPage: React.FC = () => {
                             {...register("password", {
                               required: "Password is required",
                               minLength: {
-                                value: 8,
-                                message: "Password must be at least 8 characters",
-                              },
-                              validate: {
-                                hasUpperCase: (value) =>
-                                  /[A-Z]/.test(value) || "Password must contain at least one uppercase letter",
-                                hasLowerCase: (value) =>
-                                  /[a-z]/.test(value) || "Password must contain at least one lowercase letter",
-                                hasNumber: (value) =>
-                                  /[0-9]/.test(value) || "Password must contain at least one number",
-                                hasSpecialChar: (value) =>
-                                  /[^A-Za-z0-9]/.test(value) || "Password must contain at least one special character",
+                                value: 6,
+                                message: "Password must be at least 6 characters",
                               },
                             })}
                             error={errors.password?.message}
@@ -325,25 +345,82 @@ const RegisterPage: React.FC = () => {
                           </button>
                         </div>
                         {password && (
-                          <div className="mt-2 space-y-2">
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 bg-gray-200 rounded-full h-1.5">
+                          <div className="mt-3 space-y-2">
+                            {/* Strength Bar */}
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
                                 <div
-                                  className={`h-1.5 rounded-full transition-all duration-300 ${passwordStrength.color}`}
-                                  style={{ width: `${(passwordStrength.strength / 5) * 100}%` }}
+                                  className={`h-2 rounded-full transition-all duration-500 ease-out ${passwordStrength.color}`}
+                                  style={{ width: `${passwordStrength.percentage}%` }}
                                 ></div>
                               </div>
-                              <span className="text-xs font-medium text-[#6b7280]">{passwordStrength.label}</span>
+                              <span className={`text-xs font-semibold ${passwordStrength.textColor} min-w-[70px]`}>
+                                {passwordStrength.label}
+                              </span>
                             </div>
-                            <div className="text-xs space-y-1">
-                              {passwordStrength.requirements.map((req, index) => (
+
+                            {/* Requirements Checklist */}
+                            <div className="grid grid-cols-2 gap-1 text-xs">
+                              <div
+                                className={`flex items-center gap-1 ${passwordStrength.requirements.length ? "text-green-600" : "text-gray-400"}`}
+                              >
                                 <div
-                                  key={index}
-                                  className={`${req.startsWith("✓") ? "text-green-600" : "text-gray-500"}`}
+                                  className={`w-3 h-3 rounded-full flex items-center justify-center ${passwordStrength.requirements.length ? "bg-green-100" : "bg-gray-100"}`}
                                 >
-                                  {req}
+                                  {passwordStrength.requirements.length ? "✓" : "○"}
                                 </div>
-                              ))}
+                                <span>8+ chars</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-1 ${passwordStrength.requirements.uppercase ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-3 h-3 rounded-full flex items-center justify-center ${passwordStrength.requirements.uppercase ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.uppercase ? "✓" : "○"}
+                                </div>
+                                <span>Uppercase</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-1 ${passwordStrength.requirements.lowercase ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-3 h-3 rounded-full flex items-center justify-center ${passwordStrength.requirements.lowercase ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.lowercase ? "✓" : "○"}
+                                </div>
+                                <span>Lowercase</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-1 ${passwordStrength.requirements.number ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-3 h-3 rounded-full flex items-center justify-center ${passwordStrength.requirements.number ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.number ? "✓" : "○"}
+                                </div>
+                                <span>Number</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-1 ${passwordStrength.requirements.special ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-3 h-3 rounded-full flex items-center justify-center ${passwordStrength.requirements.special ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.special ? "✓" : "○"}
+                                </div>
+                                <span>Symbol</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-1 ${passwordStrength.requirements.noRepeats ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-3 h-3 rounded-full flex items-center justify-center ${passwordStrength.requirements.noRepeats ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.noRepeats ? "✓" : "○"}
+                                </div>
+                                <span>No repeats</span>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -410,7 +487,7 @@ const RegisterPage: React.FC = () => {
                           </>
                         ) : (
                           <>
-                            Complete Registration
+                            Create Account
                             <ArrowRight size={14} className="ml-2" />
                           </>
                         )}
@@ -567,7 +644,7 @@ const RegisterPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Step 2: Password */}
+                  {/* Step 2: Password & Team Info */}
                   {currentStep === 2 && (
                     <div className="space-y-4">
                       <h4 className="text-lg font-bold text-[#232013] mb-3">Create Password</h4>
@@ -582,18 +659,8 @@ const RegisterPage: React.FC = () => {
                             {...register("password", {
                               required: "Password is required",
                               minLength: {
-                                value: 8,
-                                message: "Password must be at least 8 characters",
-                              },
-                              validate: {
-                                hasUpperCase: (value) =>
-                                  /[A-Z]/.test(value) || "Password must contain at least one uppercase letter",
-                                hasLowerCase: (value) =>
-                                  /[a-z]/.test(value) || "Password must contain at least one lowercase letter",
-                                hasNumber: (value) =>
-                                  /[0-9]/.test(value) || "Password must contain at least one number",
-                                hasSpecialChar: (value) =>
-                                  /[^A-Za-z0-9]/.test(value) || "Password must contain at least one special character",
+                                value: 6,
+                                message: "Password must be at least 6 characters",
                               },
                             })}
                             error={errors.password?.message}
@@ -607,25 +674,82 @@ const RegisterPage: React.FC = () => {
                           </button>
                         </div>
                         {password && (
-                          <div className="mt-2 space-y-2">
+                          <div className="mt-3 space-y-3">
+                            {/* Strength Bar */}
                             <div className="flex items-center gap-3">
-                              <div className="flex-1 bg-gray-200 rounded-full h-2">
+                              <div className="flex-1 bg-gray-200 rounded-full h-2.5 overflow-hidden">
                                 <div
-                                  className={`h-2 rounded-full transition-all duration-300 ${passwordStrength.color}`}
-                                  style={{ width: `${(passwordStrength.strength / 5) * 100}%` }}
+                                  className={`h-2.5 rounded-full transition-all duration-500 ease-out ${passwordStrength.color}`}
+                                  style={{ width: `${passwordStrength.percentage}%` }}
                                 ></div>
                               </div>
-                              <span className="text-xs font-medium text-[#6b7280]">{passwordStrength.label}</span>
+                              <span className={`text-sm font-semibold ${passwordStrength.textColor} min-w-[80px]`}>
+                                {passwordStrength.label}
+                              </span>
                             </div>
-                            <div className="text-xs space-y-1">
-                              {passwordStrength.requirements.map((req, index) => (
+
+                            {/* Requirements Checklist */}
+                            <div className="grid grid-cols-3 gap-2 text-sm">
+                              <div
+                                className={`flex items-center gap-2 ${passwordStrength.requirements.length ? "text-green-600" : "text-gray-400"}`}
+                              >
                                 <div
-                                  key={index}
-                                  className={`${req.startsWith("✓") ? "text-green-600" : "text-gray-500"}`}
+                                  className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${passwordStrength.requirements.length ? "bg-green-100" : "bg-gray-100"}`}
                                 >
-                                  {req}
+                                  {passwordStrength.requirements.length ? "✓" : "○"}
                                 </div>
-                              ))}
+                                <span>8+ characters</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-2 ${passwordStrength.requirements.uppercase ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${passwordStrength.requirements.uppercase ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.uppercase ? "✓" : "○"}
+                                </div>
+                                <span>Uppercase</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-2 ${passwordStrength.requirements.lowercase ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${passwordStrength.requirements.lowercase ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.lowercase ? "✓" : "○"}
+                                </div>
+                                <span>Lowercase</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-2 ${passwordStrength.requirements.number ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${passwordStrength.requirements.number ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.number ? "✓" : "○"}
+                                </div>
+                                <span>Number</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-2 ${passwordStrength.requirements.special ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${passwordStrength.requirements.special ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.special ? "✓" : "○"}
+                                </div>
+                                <span>Special character</span>
+                              </div>
+                              <div
+                                className={`flex items-center gap-2 ${passwordStrength.requirements.noRepeats ? "text-green-600" : "text-gray-400"}`}
+                              >
+                                <div
+                                  className={`w-4 h-4 rounded-full flex items-center justify-center text-xs ${passwordStrength.requirements.noRepeats ? "bg-green-100" : "bg-gray-100"}`}
+                                >
+                                  {passwordStrength.requirements.noRepeats ? "✓" : "○"}
+                                </div>
+                                <span>No repeated chars</span>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -692,7 +816,7 @@ const RegisterPage: React.FC = () => {
                           </>
                         ) : (
                           <>
-                            Sign Up
+                            Create Account
                             <ArrowRight size={16} className="ml-2" />
                           </>
                         )}
