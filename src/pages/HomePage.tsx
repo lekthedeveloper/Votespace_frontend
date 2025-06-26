@@ -225,15 +225,7 @@ const HomePage: React.FC = () => {
             secure decision making!
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-            <Button className="w-full sm:w-auto h-12 bg-gradient-to-r from-[#ffc232] to-[#ff7220] hover:from-[#ffb000] hover:to-[#e55a00] text-white font-semibold rounded-xl px-8">
-              Get Started
-              <ArrowRight size={16} className="ml-2" />
-            </Button>
-            <Button variant="secondary" className="w-full sm:w-auto h-12 bg-white/80 backdrop-blur-sm border border-[#e2e8f0] text-[#232013] hover:bg-white rounded-xl px-8">
-              View Demo
-            </Button>
-          </div>
+        
 
           {/* Mobile Stats */}
           <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto mb-8">
@@ -242,8 +234,8 @@ const HomePage: React.FC = () => {
               <div className="text-xs text-[#6b7280] font-medium">People joined</div>
             </div>
             <div className="bg-white/30 backdrop-blur-xl border border-white/40 shadow-lg rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-[#232013] mb-1">390K+</div>
-              <div className="text-xs text-[#6b7280] font-medium">Businesses</div>
+              <div className="text-2xl font-bold text-[#232013] mb-1">3300+</div>
+              <div className="text-xs text-[#6b7280] font-medium">Rooms</div>
             </div>
           </div>
 
