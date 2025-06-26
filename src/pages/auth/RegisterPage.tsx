@@ -1,20 +1,24 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { useForm } from "react-hook-form"
 import { Eye, EyeOff, ArrowRight, ArrowLeft, CheckCircle, Vote, Users, BarChart3, Shield } from "lucide-react"
 import { useAuth } from "../../contexts/AuthContext"
 import Header from "../../components/Layout/Header"
-import Button from "../../components/UI/Button"
-import Input from "../../components/UI/Input"
 
-interface RegisterForm {
+interface FormData {
   name: string
   email: string
   password: string
   confirmPassword: string
+}
+
+interface FormErrors {
+  name?: string
+  email?: string
+  password?: string
+  confirmPassword?: string
 }
 
 const RegisterPage: React.FC = () => {
@@ -24,70 +28,192 @@ const RegisterPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
+  // Simple form state management
+  const [formData, setFormData] = useState<FormData>({
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  })
+
+  const [formErrors, setFormErrors] = useState<FormErrors>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+
   const { register: registerUser } = useAuth()
   const navigate = useNavigate()
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    trigger,
-    getValues,
-    clearErrors,
-    formState: { errors },
-  } = useForm<RegisterForm>({
-    mode: "onBlur", // Changed from "onTouched" to "onBlur" for better mobile experience
-  })
+  const totalSteps = 2
 
-  const password = watch("password")
-  const totalSteps = 2 // Changed from 3 to 2
+  // Load saved data on component mount
+  useEffect(() => {
+    const savedData = localStorage.getItem("registrationFormData")
+    if (savedData) {
+      try {
+        const parsedData = JSON.parse(savedData)
+        setFormData(parsedData)
+      } catch (error) {
+        console.error("Error loading saved form data:", error)
+        localStorage.removeItem("registrationFormData")
+      }
+    }
+  }, [])
 
-  const nextStep = async () => {
-    let fieldsToValidate: (keyof RegisterForm)[] = []
+  // Save form data whenever it changes
+  useEffect(() => {
+    if (formData.name || formData.email || formData.password || formData.confirmPassword) {
+      localStorage.setItem("registrationFormData", JSON.stringify(formData))
+    }
+  }, [formData])
 
-    if (currentStep === 1) {
-      fieldsToValidate = ["name", "email"]
+  // Handle input changes
+  const handleInputChange = (field: keyof FormData, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+
+    // Clear error when user starts typing
+    if (formErrors[field]) {
+      setFormErrors((prev) => ({
+        ...prev,
+        [field]: undefined,
+      }))
+    }
+  }
+
+  // Handle input blur
+  const handleInputBlur = (field: keyof FormData) => {
+    setTouched((prev) => ({
+      ...prev,
+      [field]: true,
+    }))
+    validateField(field)
+  }
+
+  // Validate individual field
+  const validateField = (field: keyof FormData) => {
+    const value = formData[field]
+    let error = ""
+
+    switch (field) {
+      case "name":
+        if (!value.trim()) {
+          error = "Name is required"
+        } else if (value.trim().length < 2) {
+          error = "Name must be at least 2 characters"
+        }
+        break
+
+      case "email":
+        if (!value.trim()) {
+          error = "Email is required"
+        } else if (!/^\S+@\S+\.\S+$/.test(value)) {
+          error = "Please enter a valid email address"
+        }
+        break
+
+      case "password":
+        if (!value) {
+          error = "Password is required"
+        } else if (value.length < 6) {
+          error = "Password must be at least 6 characters"
+        }
+        break
+
+      case "confirmPassword":
+        if (!value) {
+          error = "Please confirm your password"
+        } else if (value !== formData.password) {
+          error = "Passwords do not match"
+        }
+        break
     }
 
-    // Get current form values
-    const values = getValues()
+    setFormErrors((prev) => ({
+      ...prev,
+      [field]: error || undefined,
+    }))
 
-    // For step 1, check if name and email have content
-    if (currentStep === 1) {
-      const hasName = values.name && values.name.trim().length > 0
-      const hasEmail = values.email && values.email.trim().length > 0
+    return !error
+  }
 
-      if (!hasName || !hasEmail) {
-        // Trigger validation to show error messages
-        await trigger(fieldsToValidate)
-        return
+  // Validate step
+  const validateStep = (step: number) => {
+    let isValid = true
+    const errors: FormErrors = {}
+
+    if (step === 1) {
+      // Validate name
+      if (!formData.name.trim()) {
+        errors.name = "Name is required"
+        isValid = false
+      } else if (formData.name.trim().length < 2) {
+        errors.name = "Name must be at least 2 characters"
+        isValid = false
+      }
+
+      // Validate email
+      if (!formData.email.trim()) {
+        errors.email = "Email is required"
+        isValid = false
+      } else if (!/^\S+@\S+\.\S+$/.test(formData.email)) {
+        errors.email = "Please enter a valid email address"
+        isValid = false
       }
     }
 
-    // Validate the fields
-    const isValid = await trigger(fieldsToValidate)
+    if (step === 2) {
+      // Validate password
+      if (!formData.password) {
+        errors.password = "Password is required"
+        isValid = false
+      } else if (formData.password.length < 6) {
+        errors.password = "Password must be at least 6 characters"
+        isValid = false
+      }
 
-    if (isValid && currentStep < totalSteps) {
-      // Clear any existing errors when moving to next step
-      clearErrors()
+      // Validate confirm password
+      if (!formData.confirmPassword) {
+        errors.confirmPassword = "Please confirm your password"
+        isValid = false
+      } else if (formData.confirmPassword !== formData.password) {
+        errors.confirmPassword = "Passwords do not match"
+        isValid = false
+      }
+    }
+
+    setFormErrors(errors)
+    return isValid
+  }
+
+  // Handle next step
+  const handleNextStep = () => {
+    if (validateStep(currentStep)) {
       setCurrentStep(currentStep + 1)
     }
   }
 
-  const prevStep = () => {
+  // Handle previous step
+  const handlePrevStep = () => {
     if (currentStep > 1) {
-      // Clear errors when going back
-      clearErrors()
       setCurrentStep(currentStep - 1)
     }
   }
 
-  const onSubmit = async (data: RegisterForm) => {
+  // Handle form submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!validateStep(1) || !validateStep(2)) {
+      return
+    }
+
     setIsLoading(true)
     setError("")
 
     try {
-      await registerUser(data.email, data.password, data.name)
+      await registerUser(formData.email, formData.password, formData.name)
+      localStorage.removeItem("registrationFormData")
       navigate("/dashboard")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed")
@@ -120,10 +246,9 @@ const RegisterPage: React.FC = () => {
       uppercase: /[A-Z]/.test(password),
       number: /[0-9]/.test(password),
       special: /[^A-Za-z0-9]/.test(password),
-      noRepeats: !/(.)\1{2,}/.test(password), // No character repeated 3+ times
+      noRepeats: !/(.)\1{2,}/.test(password),
     }
 
-    // Basic requirements (1 point each)
     if (requirements.length) strength += 1
     if (requirements.lowercase) strength += 1
     if (requirements.uppercase) strength += 1
@@ -131,17 +256,13 @@ const RegisterPage: React.FC = () => {
     if (requirements.special) strength += 1
     if (requirements.noRepeats) strength += 1
 
-    // Bonus points for longer passwords
     if (password.length >= 12) strength += 1
     if (password.length >= 16) strength += 1
 
-    // Penalty for common patterns
     const commonPatterns = [/123456/, /password/i, /qwerty/i, /abc123/i, /admin/i, /login/i]
-
     const hasCommonPattern = commonPatterns.some((pattern) => pattern.test(password))
     if (hasCommonPattern) strength = Math.max(0, strength - 2)
 
-    // Cap at maximum strength
     strength = Math.min(strength, 8)
 
     const configs = [
@@ -164,7 +285,7 @@ const RegisterPage: React.FC = () => {
     }
   }
 
-  const passwordStrength = getPasswordStrength(password || "")
+  const passwordStrength = getPasswordStrength(formData.password)
 
   const features = [
     {
@@ -282,64 +403,67 @@ const RegisterPage: React.FC = () => {
                   </div>
                 )}
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-4">
                   {/* Step 1: Basic Info */}
                   {currentStep === 1 && (
                     <div className="space-y-4">
                       <div>
                         <label className="text-sm font-semibold text-[#232013] block mb-1">Full Name</label>
-                        <Input
+                        <input
                           type="text"
                           placeholder="Enter your full name"
-                          className="h-11 bg-[#f8f6f0]/80 border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20 rounded-xl text-sm"
-                          {...register("name", {
-                            required: "Name is required",
-                            minLength: {
-                              value: 2,
-                              message: "Name must be at least 2 characters",
-                            },
-                          })}
-                          error={errors.name?.message}
+                          value={formData.name}
+                          onChange={(e) => handleInputChange("name", e.target.value)}
+                          onBlur={() => handleInputBlur("name")}
+                          className={`w-full h-11 px-4 bg-[#f8f6f0]/80 border rounded-xl text-sm transition-all duration-200 outline-none placeholder:text-slate-400 ${
+                            formErrors.name && touched.name
+                              ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                              : "border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20"
+                          }`}
                         />
+                        {formErrors.name && touched.name && (
+                          <p className="text-red-600 text-xs mt-1 font-medium">{formErrors.name}</p>
+                        )}
                       </div>
 
                       <div>
                         <label className="text-sm font-semibold text-[#232013] block mb-1">Email Address</label>
-                        <Input
+                        <input
                           type="email"
                           placeholder="Enter your email"
-                          className="h-11 bg-[#f8f6f0]/80 border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20 rounded-xl text-sm"
-                          {...register("email", {
-                            required: "Email is required",
-                            pattern: {
-                              value: /^\S+@\S+$/i,
-                              message: "Invalid email address",
-                            },
-                          })}
-                          error={errors.email?.message}
+                          value={formData.email}
+                          onChange={(e) => handleInputChange("email", e.target.value)}
+                          onBlur={() => handleInputBlur("email")}
+                          className={`w-full h-11 px-4 bg-[#f8f6f0]/80 border rounded-xl text-sm transition-all duration-200 outline-none placeholder:text-slate-400 ${
+                            formErrors.email && touched.email
+                              ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                              : "border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20"
+                          }`}
                         />
+                        {formErrors.email && touched.email && (
+                          <p className="text-red-600 text-xs mt-1 font-medium">{formErrors.email}</p>
+                        )}
                       </div>
                     </div>
                   )}
 
-                  {/* Step 2: Password & Team Info */}
+                  {/* Step 2: Password */}
                   {currentStep === 2 && (
                     <div className="space-y-4">
                       <div>
                         <label className="text-sm font-semibold text-[#232013] block mb-1">Password</label>
                         <div className="relative">
-                          <Input
+                          <input
                             type={showPassword ? "text" : "password"}
                             placeholder="Create a password"
-                            className="h-11 bg-[#f8f6f0]/80 border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20 rounded-xl pr-10 text-sm"
-                            {...register("password", {
-                              required: "Password is required",
-                              minLength: {
-                                value: 6,
-                                message: "Password must be at least 6 characters",
-                              },
-                            })}
-                            error={errors.password?.message}
+                            value={formData.password}
+                            onChange={(e) => handleInputChange("password", e.target.value)}
+                            onBlur={() => handleInputBlur("password")}
+                            className={`w-full h-11 px-4 pr-10 bg-[#f8f6f0]/80 border rounded-xl text-sm transition-all duration-200 outline-none placeholder:text-slate-400 ${
+                              formErrors.password && touched.password
+                                ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                                : "border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20"
+                            }`}
                           />
                           <button
                             type="button"
@@ -349,7 +473,11 @@ const RegisterPage: React.FC = () => {
                             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
-                        {password && (
+                        {formErrors.password && touched.password && (
+                          <p className="text-red-600 text-xs mt-1 font-medium">{formErrors.password}</p>
+                        )}
+
+                        {formData.password && (
                           <div className="mt-3 space-y-2">
                             {/* Strength Bar */}
                             <div className="flex items-center gap-3">
@@ -434,15 +562,17 @@ const RegisterPage: React.FC = () => {
                       <div>
                         <label className="text-sm font-semibold text-[#232013] block mb-1">Confirm Password</label>
                         <div className="relative">
-                          <Input
+                          <input
                             type={showConfirmPassword ? "text" : "password"}
                             placeholder="Confirm your password"
-                            className="h-11 bg-[#f8f6f0]/80 border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20 rounded-xl pr-10 text-sm"
-                            {...register("confirmPassword", {
-                              required: "Please confirm your password",
-                              validate: (value) => value === password || "Passwords do not match",
-                            })}
-                            error={errors.confirmPassword?.message}
+                            value={formData.confirmPassword}
+                            onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
+                            onBlur={() => handleInputBlur("confirmPassword")}
+                            className={`w-full h-11 px-4 pr-10 bg-[#f8f6f0]/80 border rounded-xl text-sm transition-all duration-200 outline-none placeholder:text-slate-400 ${
+                              formErrors.confirmPassword && touched.confirmPassword
+                                ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                                : "border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20"
+                            }`}
                           />
                           <button
                             type="button"
@@ -452,6 +582,9 @@ const RegisterPage: React.FC = () => {
                             {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
+                        {formErrors.confirmPassword && touched.confirmPassword && (
+                          <p className="text-red-600 text-xs mt-1 font-medium">{formErrors.confirmPassword}</p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -459,44 +592,43 @@ const RegisterPage: React.FC = () => {
                   {/* Mobile Navigation Buttons */}
                   <div className="flex gap-3 pt-4">
                     {currentStep > 1 && (
-                      <Button
+                      <button
                         type="button"
-                        onClick={prevStep}
-                        variant="outline"
-                        className="flex-1 h-11 border-[#e2e8f0] text-[#232013] hover:bg-[#f8f6f0] rounded-xl text-sm"
+                        onClick={handlePrevStep}
+                        className="flex-1 h-11 border border-[#e2e8f0] text-[#232013] hover:bg-[#f8f6f0] rounded-xl text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2"
                       >
-                        <ArrowLeft size={14} className="mr-2" />
+                        <ArrowLeft size={14} />
                         Back
-                      </Button>
+                      </button>
                     )}
 
                     {currentStep < totalSteps ? (
-                      <Button
+                      <button
                         type="button"
-                        onClick={nextStep}
-                        className="flex-1 h-11 bg-gradient-to-r from-[#ffc232] to-[#ff7220] hover:from-[#ffb000] hover:to-[#e55a00] text-white font-semibold rounded-xl text-sm"
+                        onClick={handleNextStep}
+                        className="flex-1 h-11 bg-gradient-to-r from-[#ffc232] to-[#ff7220] hover:from-[#ffb000] hover:to-[#e55a00] text-white font-semibold rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2"
                       >
                         Continue
-                        <ArrowRight size={14} className="ml-2" />
-                      </Button>
+                        <ArrowRight size={14} />
+                      </button>
                     ) : (
-                      <Button
+                      <button
                         type="submit"
                         disabled={isLoading}
-                        className="flex-1 h-11 bg-gradient-to-r from-[#232013] to-[#3a3426] hover:from-[#3a3426] hover:to-[#232013] text-white font-semibold rounded-xl text-sm"
+                        className="flex-1 h-11 bg-gradient-to-r from-[#232013] to-[#3a3426] hover:from-[#3a3426] hover:to-[#232013] text-white font-semibold rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isLoading ? (
                           <>
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                             Creating...
                           </>
                         ) : (
                           <>
                             Create Account
-                            <ArrowRight size={14} className="ml-2" />
+                            <ArrowRight size={14} />
                           </>
                         )}
-                      </Button>
+                      </button>
                     )}
                   </div>
                 </form>
@@ -607,7 +739,7 @@ const RegisterPage: React.FC = () => {
                   </div>
                 )}
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                <form onSubmit={handleSubmit} className="space-y-5">
                   {/* Step 1: Basic Info */}
                   {currentStep === 1 && (
                     <div className="space-y-4">
@@ -615,41 +747,45 @@ const RegisterPage: React.FC = () => {
 
                       <div className="space-y-1">
                         <label className="text-sm font-semibold text-[#232013] block">Full Name</label>
-                        <Input
+                        <input
                           type="text"
                           placeholder="Enter your full name"
-                          className="h-11 bg-[#f8f6f0]/80 border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20 rounded-xl text-sm"
-                          {...register("name", {
-                            required: "Name is required",
-                            minLength: {
-                              value: 2,
-                              message: "Name must be at least 2 characters",
-                            },
-                          })}
-                          error={errors.name?.message}
+                          value={formData.name}
+                          onChange={(e) => handleInputChange("name", e.target.value)}
+                          onBlur={() => handleInputBlur("name")}
+                          className={`w-full h-11 px-4 bg-[#f8f6f0]/80 border rounded-xl text-sm transition-all duration-200 outline-none placeholder:text-slate-400 ${
+                            formErrors.name && touched.name
+                              ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                              : "border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20"
+                          }`}
                         />
+                        {formErrors.name && touched.name && (
+                          <p className="text-red-600 text-xs mt-1 font-medium">{formErrors.name}</p>
+                        )}
                       </div>
 
                       <div className="space-y-1">
                         <label className="text-sm font-semibold text-[#232013] block">Email Address</label>
-                        <Input
+                        <input
                           type="email"
                           placeholder="Enter your email"
-                          className="h-11 bg-[#f8f6f0]/80 border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20 rounded-xl text-sm"
-                          {...register("email", {
-                            required: "Email is required",
-                            pattern: {
-                              value: /^\S+@\S+$/i,
-                              message: "Invalid email address",
-                            },
-                          })}
-                          error={errors.email?.message}
+                          value={formData.email}
+                          onChange={(e) => handleInputChange("email", e.target.value)}
+                          onBlur={() => handleInputBlur("email")}
+                          className={`w-full h-11 px-4 bg-[#f8f6f0]/80 border rounded-xl text-sm transition-all duration-200 outline-none placeholder:text-slate-400 ${
+                            formErrors.email && touched.email
+                              ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                              : "border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20"
+                          }`}
                         />
+                        {formErrors.email && touched.email && (
+                          <p className="text-red-600 text-xs mt-1 font-medium">{formErrors.email}</p>
+                        )}
                       </div>
                     </div>
                   )}
 
-                  {/* Step 2: Password & Team Info */}
+                  {/* Step 2: Password */}
                   {currentStep === 2 && (
                     <div className="space-y-4">
                       <h4 className="text-lg font-bold text-[#232013] mb-3">Create Password</h4>
@@ -657,18 +793,17 @@ const RegisterPage: React.FC = () => {
                       <div className="space-y-1">
                         <label className="text-sm font-semibold text-[#232013] block">Password</label>
                         <div className="relative">
-                          <Input
+                          <input
                             type={showPassword ? "text" : "password"}
                             placeholder="Create a password"
-                            className="h-11 bg-[#f8f6f0]/80 border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20 rounded-xl pr-10 text-sm"
-                            {...register("password", {
-                              required: "Password is required",
-                              minLength: {
-                                value: 6,
-                                message: "Password must be at least 6 characters",
-                              },
-                            })}
-                            error={errors.password?.message}
+                            value={formData.password}
+                            onChange={(e) => handleInputChange("password", e.target.value)}
+                            onBlur={() => handleInputBlur("password")}
+                            className={`w-full h-11 px-4 pr-10 bg-[#f8f6f0]/80 border rounded-xl text-sm transition-all duration-200 outline-none placeholder:text-slate-400 ${
+                              formErrors.password && touched.password
+                                ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                                : "border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20"
+                            }`}
                           />
                           <button
                             type="button"
@@ -678,7 +813,11 @@ const RegisterPage: React.FC = () => {
                             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
-                        {password && (
+                        {formErrors.password && touched.password && (
+                          <p className="text-red-600 text-xs mt-1 font-medium">{formErrors.password}</p>
+                        )}
+
+                        {formData.password && (
                           <div className="mt-3 space-y-3">
                             {/* Strength Bar */}
                             <div className="flex items-center gap-3">
@@ -763,15 +902,17 @@ const RegisterPage: React.FC = () => {
                       <div className="space-y-1">
                         <label className="text-sm font-semibold text-[#232013] block">Confirm Password</label>
                         <div className="relative">
-                          <Input
+                          <input
                             type={showConfirmPassword ? "text" : "password"}
                             placeholder="Confirm your password"
-                            className="h-11 bg-[#f8f6f0]/80 border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20 rounded-xl pr-10 text-sm"
-                            {...register("confirmPassword", {
-                              required: "Please confirm your password",
-                              validate: (value) => value === password || "Passwords do not match",
-                            })}
-                            error={errors.confirmPassword?.message}
+                            value={formData.confirmPassword}
+                            onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
+                            onBlur={() => handleInputBlur("confirmPassword")}
+                            className={`w-full h-11 px-4 pr-10 bg-[#f8f6f0]/80 border rounded-xl text-sm transition-all duration-200 outline-none placeholder:text-slate-400 ${
+                              formErrors.confirmPassword && touched.confirmPassword
+                                ? "border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
+                                : "border-[#e2e8f0] focus:border-[#ffc232] focus:ring-2 focus:ring-[#ffc232]/20"
+                            }`}
                           />
                           <button
                             type="button"
@@ -781,6 +922,9 @@ const RegisterPage: React.FC = () => {
                             {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
+                        {formErrors.confirmPassword && touched.confirmPassword && (
+                          <p className="text-red-600 text-xs mt-1 font-medium">{formErrors.confirmPassword}</p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -788,44 +932,43 @@ const RegisterPage: React.FC = () => {
                   {/* Navigation Buttons */}
                   <div className="flex gap-3 pt-4">
                     {currentStep > 1 && (
-                      <Button
+                      <button
                         type="button"
-                        onClick={prevStep}
-                        variant="outline"
-                        className="flex-1 h-11 border-[#e2e8f0] text-[#232013] hover:bg-[#f8f6f0] rounded-xl text-sm"
+                        onClick={handlePrevStep}
+                        className="flex-1 h-11 border border-[#e2e8f0] text-[#232013] hover:bg-[#f8f6f0] rounded-xl text-sm font-medium transition-all duration-200 flex items-center justify-center gap-2"
                       >
-                        <ArrowLeft size={16} className="mr-2" />
+                        <ArrowLeft size={16} />
                         Back
-                      </Button>
+                      </button>
                     )}
 
                     {currentStep < totalSteps ? (
-                      <Button
+                      <button
                         type="button"
-                        onClick={nextStep}
-                        className="flex-1 h-11 bg-gradient-to-r from-[#ffc232] to-[#ff7220] hover:from-[#ffb000] hover:to-[#e55a00] text-white font-semibold rounded-xl text-sm"
+                        onClick={handleNextStep}
+                        className="flex-1 h-11 bg-gradient-to-r from-[#ffc232] to-[#ff7220] hover:from-[#ffb000] hover:to-[#e55a00] text-white font-semibold rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2"
                       >
                         Continue
-                        <ArrowRight size={16} className="ml-2" />
-                      </Button>
+                        <ArrowRight size={16} />
+                      </button>
                     ) : (
-                      <Button
+                      <button
                         type="submit"
                         disabled={isLoading}
-                        className="flex-1 h-11 bg-gradient-to-r from-[#232013] to-[#3a3426] hover:from-[#3a3426] hover:to-[#232013] text-white font-semibold rounded-xl text-sm"
+                        className="flex-1 h-11 bg-gradient-to-r from-[#232013] to-[#3a3426] hover:from-[#3a3426] hover:to-[#232013] text-white font-semibold rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {isLoading ? (
                           <>
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2"></div>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
                             Creating Account...
                           </>
                         ) : (
                           <>
                             Create Account
-                            <ArrowRight size={16} className="ml-2" />
+                            <ArrowRight size={16} />
                           </>
                         )}
-                      </Button>
+                      </button>
                     )}
                   </div>
                 </form>
